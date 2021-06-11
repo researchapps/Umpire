@@ -5,10 +5,31 @@
 # SPDX-License-Identifier: (MIT)
 ##############################################################################
 if (ENABLE_C)
+  set (interface_tests_depends
+    umpire gtest)
+
+  if (ENABLE_CUDA)
+    set (interface_tests_depends
+      ${interface_tests_depends}
+      cuda_runtime)
+  endif ()
+
+  if (ENABLE_HIP)
+    set (interface_tests_depends
+      ${interface_tests_depends}
+      hip_runtime)
+  endif ()
+
+  if (ENABLE_OPENMP OR ENABLE_OPENMP_TARGET)
+    set (interface_tests_depends
+      ${interface_tests_depends}
+      openmp)
+  endif ()
+
   blt_add_executable(
     NAME allocator_c_tests
     SOURCES allocator_c_tests.cpp
-    DEPENDS_ON umpire gtest)
+    DEPENDS_ON ${interface_tests_depends})
 
   target_include_directories(
     allocator_c_tests
@@ -22,7 +43,7 @@ if (ENABLE_C)
   blt_add_executable(
     NAME operation_c_tests
     SOURCES operation_c_tests.cpp
-    DEPENDS_ON umpire gtest)
+    DEPENDS_ON ${interface_tests_depends})
 
   target_include_directories(
     operation_c_tests
@@ -32,6 +53,20 @@ if (ENABLE_C)
   blt_add_test(
     NAME operation_c_tests
     COMMAND operation_c_tests)
+
+  blt_add_executable(
+    NAME version_c_tests
+    SOURCES version_c_tests.cpp
+    DEPENDS_ON ${interface_tests_depends})
+
+  target_include_directories(
+    version_c_tests
+    PRIVATE
+    ${PROJECT_BINARY_DIR}/include)
+
+  blt_add_test(
+    NAME version_c_tests
+    COMMAND version_c_tests)
 
   if (ENABLE_FORTRAN)
     add_subdirectory(fortran)

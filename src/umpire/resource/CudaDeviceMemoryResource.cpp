@@ -33,15 +33,13 @@ void* CudaDeviceMemoryResource::allocate(std::size_t bytes)
   void* ptr = m_allocator.allocate(bytes);
 
   UMPIRE_LOG(Debug, "(bytes=" << bytes << ") returning " << ptr);
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ptr),
-                          "size", bytes, "event", "allocate");
 
   if (old_device != m_traits.id)
     cudaSetDevice(old_device);
   return ptr;
 }
 
-void CudaDeviceMemoryResource::deallocate(void* ptr)
+void CudaDeviceMemoryResource::deallocate(void* ptr, std::size_t UMPIRE_UNUSED_ARG(size))
 {
   int old_device;
   cudaGetDevice(&old_device);
@@ -50,24 +48,17 @@ void CudaDeviceMemoryResource::deallocate(void* ptr)
 
   UMPIRE_LOG(Debug, "(ptr=" << ptr << ")");
 
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ptr),
-                          "size", 0x0, "event", "deallocate");
-
   m_allocator.deallocate(ptr);
   if (old_device != m_traits.id)
     cudaSetDevice(old_device);
 }
 
-std::size_t CudaDeviceMemoryResource::getCurrentSize() const noexcept
+bool CudaDeviceMemoryResource::isAccessibleFrom(Platform p) noexcept
 {
-  UMPIRE_LOG(Debug, "() returning " << 0);
-  return 0;
-}
-
-std::size_t CudaDeviceMemoryResource::getHighWatermark() const noexcept
-{
-  UMPIRE_LOG(Debug, "() returning " << 0);
-  return 0;
+  if(p == Platform::cuda)
+    return true;
+  else
+    return false;
 }
 
 Platform CudaDeviceMemoryResource::getPlatform() noexcept

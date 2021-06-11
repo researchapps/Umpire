@@ -18,23 +18,61 @@ inline void* Allocator::allocate(std::size_t bytes)
 {
   void* ret = nullptr;
 
-  umpire_ver_3_found = 0;
+  umpire_ver_5_found = 0;
 
   UMPIRE_LOG(Debug, "(" << bytes << ")");
 
   UMPIRE_REPLAY("\"event\": \"allocate\", \"payload\": { \"allocator_ref\": \""
                 << m_allocator << "\", \"size\": " << bytes << " }");
 
-  ret = m_allocator->allocate(bytes);
+  if (0 == bytes) {
+    ret = allocateNull();
+  } else {
+    ret = m_allocator->allocate(bytes);
+  }
+
+  if (m_tracking) {
+    registerAllocation(ret, bytes, m_allocator);
+  }
 
   UMPIRE_REPLAY("\"event\": \"allocate\", \"payload\": { \"allocator_ref\": \""
                 << m_allocator << "\", \"size\": " << bytes
                 << " }, \"result\": { \"memory_ptr\": \"" << ret << "\" }");
-
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ret),
-                          "size", bytes, "event", "allocate");
   
   UMPIRE_CALIPER_TRACK(ret, getName().c_str(), bytes);
+  
+  return ret;
+}
+
+inline void* Allocator::allocate(const std::string& name, std::size_t bytes)
+{
+  void* ret = nullptr;
+
+  UMPIRE_LOG(Debug, "(" << bytes << ")");
+
+  if (m_allocator->getTraits().resource
+              != MemoryResourceTraits::resource_type::shared) {
+    UMPIRE_ERROR("This allocator does not support named allocations");
+  }
+
+  UMPIRE_REPLAY("\"event\": \"allocate\", \"payload\": { \"allocator_ref\": \""
+                << m_allocator << "\", \"size\": " << bytes << ", \"name\": \"" << name << "\" }");
+
+  if (0 == bytes) {
+    ret = allocateNull();
+  } else {
+    ret = m_allocator->allocate_named(name, bytes);
+  }
+
+  if (m_tracking) {
+    registerAllocation(ret, bytes, m_allocator);
+  }
+
+  UMPIRE_REPLAY("\"event\": \"allocate\", \"payload\": { \"allocator_ref\": \""
+                << m_allocator << "\", \"size\": " << bytes << ", \"name\": \"" << name << "\""
+                << " }, \"result\": { \"memory_ptr\": \"" << ret << "\" }");
+  
+    UMPIRE_CALIPER_TRACK(ret, getName().c_str(), bytes);
 
   return ret;
 }
@@ -47,16 +85,22 @@ inline void Allocator::deallocate(void* ptr)
 
   UMPIRE_LOG(Debug, "(" << ptr << ")");
 
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ptr),
-                          "size", 0x0, "event", "deallocate");
-
   UMPIRE_CALIPER_UNTRACK(ptr);
 
   if (!ptr) {
-    UMPIRE_LOG(Info, "Deallocating a null pointer");
+    UMPIRE_LOG(Info, "Deallocating a null pointer (This behavior is intentionally allowed and ignored)");
     return;
   } else {
-    m_allocator->deallocate(ptr);
+    if (m_tracking) {
+      auto record = deregisterAllocation(ptr, m_allocator);
+      if (! deallocateNull(ptr)) {
+        m_allocator->deallocate(ptr,record.size);
+      } 
+    } else {
+      if (! deallocateNull(ptr)) {
+        m_allocator->deallocate(ptr);
+      }
+    }
   }
 }
 

@@ -39,8 +39,14 @@ TEST_P(AllocatorTest, AllocateDeallocateBig)
       static_cast<double*>(m_allocator->allocate(m_big * sizeof(double)));
 
   ASSERT_NE(nullptr, data);
-
+  
   m_allocator->deallocate(data);
+}
+
+TEST_P(AllocatorTest, GetParentCheck)
+{
+  //Parent of default allocator should be nullptr 
+  ASSERT_EQ(nullptr, m_allocator->getParent());
 }
 
 TEST_P(AllocatorTest, AllocateDeallocateSmall)
@@ -93,7 +99,7 @@ TEST_P(AllocatorTest, GetSize)
 
 TEST_P(AllocatorTest, GetName)
 {
-  ASSERT_EQ(m_allocator->getName(), GetParam());
+  ASSERT_TRUE(GetParam().find(m_allocator->getName()) != std::string::npos);
 }
 
 TEST_P(AllocatorTest, GetById)
@@ -118,7 +124,11 @@ TEST_P(AllocatorTest, get_allocator_records)
 
   auto records = umpire::get_allocator_records(*m_allocator);
 
-  ASSERT_EQ(records.size(), 1);
+  for (const auto& r : records) {
+    std::cout << r.ptr << " " << r.size << " " << r.strategy << std::endl;
+  }
+
+  EXPECT_EQ(records.size(), 1);
 
   m_allocator->deallocate(data);
 }
@@ -145,49 +155,61 @@ TEST_P(AllocatorTest, getActualSize)
   m_allocator->deallocate(data);
 }
 
-const std::string allocator_strings[] = {"HOST"
+TEST_P(AllocatorTest, getStrategyName)
+{
+  ASSERT_EQ(m_allocator->getStrategyName(), "MemoryResource");
+}
+
+std::vector<std::string> allocator_strings()
+{
+  std::vector<std::string> allocators;
+  allocators.push_back("HOST");
 #if defined(UMPIRE_ENABLE_DEVICE)
-                                         ,
-                                         "DEVICE"
+  allocators.push_back("DEVICE");
+  auto& rm = umpire::ResourceManager::getInstance();
+  for (int id = 0; id < rm.getNumDevices(); id++) {
+    allocators.push_back(std::string{"DEVICE::" + std::to_string(id)});
+  }
 #endif
 #if defined(UMPIRE_ENABLE_UM)
-                                         ,
-                                         "UM"
+  allocators.push_back("UM");
 #endif
 #if defined(UMPIRE_ENABLE_CONST)
-                                         ,
-                                         "DEVICE_CONST"
+  allocators.push_back("DEVICE_CONST");
 #endif
 #if defined(UMPIRE_ENABLE_PINNED)
-                                         ,
-                                         "PINNED"
+  allocators.push_back("PINNED");
 #endif
-};
+
+  return allocators;
+}
 
 INSTANTIATE_TEST_SUITE_P(Allocators, AllocatorTest,
-                         ::testing::ValuesIn(allocator_strings));
-
-TEST(Allocator, isRegistered)
-{
-  auto& rm = umpire::ResourceManager::getInstance();
-
-  for (const std::string& allocator_string : allocator_strings) {
-    ASSERT_TRUE(rm.isAllocatorRegistered(allocator_string));
-  }
-  ASSERT_FALSE(rm.isAllocatorRegistered("BANANAS"));
-}
+                         ::testing::ValuesIn(allocator_strings()));
 
 TEST(Allocator, registerAllocator)
 {
   auto& rm = umpire::ResourceManager::getInstance();
 
-  rm.registerAllocator("my_host_allocator_copy", rm.getAllocator("HOST"));
+  for (const std::string& allocator_name : allocator_strings()) {
+    const std::string allocator_copy_name =
+        allocator_name + std::string{"_copy"};
 
-  ASSERT_EQ(rm.getAllocator("HOST").getAllocationStrategy(),
-            rm.getAllocator("my_host_allocator_copy").getAllocationStrategy());
+    rm.addAlias(allocator_copy_name, rm.getAllocator(allocator_name));
 
-  ASSERT_ANY_THROW(
-      rm.registerAllocator("HOST", rm.getAllocator("my_host_allocator_copy")));
+    ASSERT_EQ(rm.getAllocator(allocator_name).getAllocationStrategy(),
+              rm.getAllocator(allocator_copy_name).getAllocationStrategy());
+
+    ASSERT_ANY_THROW(rm.addAlias(
+        allocator_name, rm.getAllocator(allocator_copy_name)));
+
+    int id = rm.getAllocator(allocator_name).getId();
+
+    ASSERT_TRUE(rm.isAllocator(allocator_name));
+    ASSERT_TRUE(rm.isAllocator(id));
+  }
+
+  ASSERT_FALSE(rm.isAllocator("BANANAS"));
 }
 
 TEST(Allocator, GetSetDefault)
@@ -282,8 +304,8 @@ TEST(Allocation, DeallocateDifferent)
   ASSERT_NO_THROW(alloc_one.deallocate(data));
 }
 
-#if defined(UMPIRE_ENABLE_CUDA)
-TEST(Allocator, DeallocateDifferentCuda)
+#if defined(UMPIRE_ENABLE_CUDA) || defined(UMPIRE_ENABLE_HIP) || defined(UMPIRE_ENABLE_SYCL)
+TEST(Allocator, DeallocateDifferentUMDevice)
 {
   auto& rm = umpire::ResourceManager::getInstance();
   auto alloc_um = rm.getAllocator("UM");

@@ -33,20 +33,27 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
 
   // Allocator for the underlying data
   typedef FixedSizePool<struct Block, IA, IA, (1 << 6)> BlockPool;
-  BlockPool blockPool;
+  BlockPool blockPool{};
 
   // Start of the nodes of used and free block lists
-  struct Block *usedBlocks;
-  struct Block *freeBlocks;
+  struct Block *usedBlocks{nullptr};
+  struct Block *freeBlocks{nullptr};
 
   // Total size allocated (bytes)
-  std::size_t m_actual_bytes;
+  std::size_t m_actual_bytes{0};
+  std::size_t m_current_size{0};
+  std::size_t m_actual_highwatermark{0};
 
   // Minimum size of initial allocation
   std::size_t m_first_minimum_pool_allocation_size;
 
   // Minimum size for allocations
   std::size_t m_next_minimum_pool_allocation_size;
+
+  std::size_t m_releasable_blocks{0};
+  std::size_t m_total_blocks{0};
+
+  bool m_is_destructing{false};
 
   // Search the list of free blocks and return a usable one if that exists, else
   // NULL
@@ -74,6 +81,8 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
     else
       size = std::max(size, m_next_minimum_pool_allocation_size);
 
+    UMPIRE_LOG(Debug, "Allocating new chunk of size " << size);
+
     curr = nullptr;
     prev = nullptr;
     void *data{nullptr};
@@ -89,38 +98,26 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
                                   << umpire::util::backtracer<>::print(bt));
       }
 #endif
-      data = aligned_allocate(size);
+      data = aligned_allocate(size); // Will POISON
     } catch (...) {
       UMPIRE_LOG(Error,
-                 "\n\tMemory exhausted at allocation resource. "
-                 "Attempting to give blocks back.\n\n"
-                     << getFreeBlocks() << " Free Blocks, " << getInUseBlocks()
-                     << " Used Blocks\n");
+                 "Caught error allocating new chunk, giving up free chunks and "
+                 "retrying...");
       freeReleasedBlocks();
-      UMPIRE_LOG(Error,
-                 "\n\tMemory exhausted at allocation resource.  "
-                 "\n\tRetrying allocation operation: "
-                     << getFreeBlocks() << " Free Blocks, " << getInUseBlocks()
-                     << " Used Blocks\n");
       try {
-        data = aligned_allocate(size);
-        UMPIRE_LOG(Error,
-                   "\n\tMemory successfully recovered at resource.  Allocation "
-                   "succeeded\n");
+        data = aligned_allocate(size); // Will POISON
+        UMPIRE_LOG(Debug, "memory reclaimed, chunk successfully allocated.");
       } catch (...) {
-        UMPIRE_LOG(Error,
-                   "\n\tUnable to allocate from resource even after giving "
-                   "back free blocks.\n"
-                   "\tThrowing to let application know we have no more memory: "
-                       << getFreeBlocks() << " Partially Free Blocks, "
-                       << getInUseBlocks() << " Used Blocks\n");
+        UMPIRE_LOG(Error, "recovery failed.");
         throw;
       }
     }
 
-    UMPIRE_POISON_MEMORY_REGION(m_allocator, data, size);
-
     m_actual_bytes += size;
+    m_actual_highwatermark =
+      (m_actual_bytes > m_actual_highwatermark) ? m_actual_bytes : m_actual_highwatermark;
+    m_releasable_blocks++;
+    m_total_blocks++;
 
     // Allocate the block
     curr = (struct Block *)blockPool.allocate();
@@ -149,6 +146,9 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
                   const std::size_t size)
   {
     struct Block *next;
+
+    if (curr->size == curr->blockSize)
+      m_releasable_blocks--;
 
     if (curr->size == size) {
       // Keep it
@@ -184,7 +184,7 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
 
     // Find location to put this block in the freeBlocks list
     prev = NULL;
-    for (struct Block *temp = freeBlocks; temp && temp->data < curr->data;
+    for (struct Block *temp = freeBlocks; temp && (temp->data < curr->data);
          temp = temp->next)
       prev = temp;
 
@@ -210,6 +210,9 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
     } else {
       curr->next = next;
     }
+
+    if (curr->size == curr->blockSize)
+      m_releasable_blocks++;
   }
 
   std::size_t freeReleasedBlocks()
@@ -226,10 +229,27 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
       // Make sure to only free blocks that are completely released.
       //
       if (curr->size == curr->blockSize) {
-        UMPIRE_POISON_MEMORY_REGION(m_allocator, curr->data, curr->size);
+        UMPIRE_LOG(Debug, "Releasing " << curr->size << " size chunk @ "
+                                       << static_cast<void *>(curr->data));
+
         m_actual_bytes -= curr->size;
+        m_releasable_blocks--;
+        m_total_blocks--;
+
         freed += curr->size;
-        aligned_deallocate(curr->data);
+        try {
+          aligned_deallocate(curr->data);
+        } catch (...) {
+          if (m_is_destructing) {
+            //
+            // Ignore error in case the underlying vendor API has already
+            // shutdown
+            //
+            UMPIRE_LOG(Error, "Pool is destructing, Exception Ignored");
+          } else {
+            throw;
+          }
+        }
 
         if (prev)
           prev->next = curr->next;
@@ -266,17 +286,6 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
     deallocate(ptr);
   }
 
-  void freeAllBlocks()
-  {
-    // Release the used blocks
-    while (usedBlocks) {
-      releaseBlock(usedBlocks, NULL);
-    }
-
-    freeReleasedBlocks();
-    assert("Not all blocks were released properly" && freeBlocks == NULL);
-  }
-
  public:
   DynamicSizePool(umpire::strategy::AllocationStrategy *strat,
                   const std::size_t first_minimum_pool_allocation_size = (16 *
@@ -284,45 +293,49 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
                   const std::size_t next_minimum_pool_allocation_size = 256,
                   const std::size_t alignment = 16)
       : umpire::strategy::mixins::AlignedAllocation{alignment, strat},
-        blockPool{},
-        usedBlocks{nullptr},
-        freeBlocks{nullptr},
-        m_actual_bytes{0},
-        m_first_minimum_pool_allocation_size{
-            aligned_round_up(first_minimum_pool_allocation_size)},
-        m_next_minimum_pool_allocation_size{
-            aligned_round_up(next_minimum_pool_allocation_size)}
+        m_first_minimum_pool_allocation_size{first_minimum_pool_allocation_size},
+        m_next_minimum_pool_allocation_size{next_minimum_pool_allocation_size}
   {
+    UMPIRE_LOG(Debug, " ( "
+                          << ", allocator=\"" << strat->getName() << "\""
+                          << ", first_minimum_pool_allocation_size="
+                          << m_first_minimum_pool_allocation_size
+                          << ", next_minimum_pool_allocation_size="
+                          << m_next_minimum_pool_allocation_size
+                          << ", alignment=" << alignment << " )");
   }
 
   DynamicSizePool(const DynamicSizePool &) = delete;
 
   ~DynamicSizePool()
   {
-    freeAllBlocks();
+    UMPIRE_LOG(Debug, "Releasing free blocks to device");
+    m_is_destructing = true;
+    freeReleasedBlocks();
   }
 
-  void *allocate(std::size_t size)
+  void *allocate(std::size_t bytes)
   {
-    size = aligned_round_up(size);
-
+    UMPIRE_LOG(Debug, "(bytes=" << bytes << ")");
+    const std::size_t rounded_bytes{aligned_round_up(bytes)};
     struct Block *best{nullptr}, *prev{nullptr};
 
-    findUsableBlock(best, prev, size);
+    findUsableBlock(best, prev, rounded_bytes);
 
     // Allocate a block if needed
     if (!best) {
-      allocateBlock(best, prev, size);
+      allocateBlock(best, prev, rounded_bytes);
     }
 
     // Split the free block
-    splitBlock(best, prev, size);
+    splitBlock(best, prev, rounded_bytes);
 
     // Push node to the list of used nodes
     best->next = usedBlocks;
     usedBlocks = best;
 
-    UMPIRE_UNPOISON_MEMORY_REGION(m_allocator, usedBlocks->data, size);
+    m_current_size += rounded_bytes;
+    UMPIRE_UNPOISON_MEMORY_REGION(m_allocator, usedBlocks->data, bytes);
 
     // Return the new pointer
     return usedBlocks->data;
@@ -330,7 +343,7 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
 
   void deallocate(void *ptr)
   {
-    assert(ptr);
+    UMPIRE_LOG(Debug, "(ptr=" << ptr << ")");
 
     // Find the associated block
     struct Block *curr = usedBlocks, *prev = NULL;
@@ -340,15 +353,43 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
     if (!curr)
       return;
 
+    m_current_size -= curr->size;
     UMPIRE_POISON_MEMORY_REGION(m_allocator, ptr, curr->size);
 
+    UMPIRE_LOG(Debug, "Deallocating data held by " << curr);
     // Release it
     releaseBlock(curr, prev);
+  }
+
+  void release()
+  {
+    UMPIRE_LOG(Debug, "()");
+    freeReleasedBlocks();
+  }
+
+  std::size_t getReleasableBlocks() const noexcept
+  {
+    return m_releasable_blocks;
+  }
+
+  std::size_t getTotalBlocks() const noexcept
+  {
+    return m_total_blocks;
   }
 
   std::size_t getActualSize() const
   {
     return m_actual_bytes;
+  }
+
+  std::size_t getCurrentSize() const
+  {
+    return m_current_size;
+  }
+
+  std::size_t getActualHighwaterMark() const noexcept
+  {
+    return m_actual_highwatermark;
   }
 
   std::size_t getBlocksInPool() const
@@ -410,16 +451,9 @@ class DynamicSizePool : private umpire::strategy::mixins::AlignedAllocation {
     if (getFreeBlocks() > 1) {
       std::size_t size_to_coalesce = freeReleasedBlocks();
 
-      UMPIRE_LOG(Debug,
-                 "Attempting to coalesce " << size_to_coalesce << " bytes");
-
+      UMPIRE_LOG(Debug, "coalescing " << size_to_coalesce << " bytes.");
       coalesceFreeBlocks(size_to_coalesce);
     }
-  }
-
-  void release()
-  {
-    freeReleasedBlocks();
   }
 };
 

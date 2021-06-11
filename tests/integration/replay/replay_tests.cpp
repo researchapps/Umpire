@@ -15,9 +15,7 @@
 #include "umpire/strategy/AllocationAdvisor.hpp"
 #include "umpire/strategy/AllocationPrefetcher.hpp"
 #include "umpire/strategy/AllocationStrategy.hpp"
-#include "umpire/strategy/DynamicPool.hpp"
 #include "umpire/strategy/DynamicPoolList.hpp"
-#include "umpire/strategy/DynamicPoolMap.hpp"
 #include "umpire/strategy/FixedPool.hpp"
 #include "umpire/strategy/MixedPool.hpp"
 #include "umpire/strategy/MonotonicAllocationStrategy.hpp"
@@ -139,7 +137,7 @@ void testAllocation(std::string name)
 
   try {
     auto dynamic_pool =
-        umpire::util::unwrap_allocator<umpire::strategy::DynamicPool>(alloc);
+        umpire::util::unwrap_allocator<umpire::strategy::DynamicPoolList>(alloc);
 
     dynamic_pool->coalesce();
     alloc.release();
@@ -159,22 +157,20 @@ static void runTest()
 {
   auto& rm = umpire::ResourceManager::getInstance();
 
-  std::vector<std::string> allocators
-  {
-    "HOST"
+  std::vector<std::string> allocators;
+  allocators.push_back("HOST");
 #if defined(UMPIRE_ENABLE_DEVICE)
-        ,
-        "DEVICE"
+  allocators.push_back("DEVICE");
+  for (int id = 0; id < rm.getNumDevices(); id++) {
+    allocators.push_back(std::string{"DEVICE::" + std::to_string(id)});
+  }
 #endif
 #if defined(UMPIRE_ENABLE_UM)
-        ,
-        "UM"
+  allocators.push_back("UM");
 #endif
 #if defined(UMPIRE_ENABLE_PINNED)
-        ,
-        "PINNED"
+  allocators.push_back("PINNED");
 #endif
-  };
 
   for (auto basename : allocators) {
     testCopy(basename);
@@ -243,8 +239,6 @@ static void runTest()
         1 * 1024 *
         1024; // Minimum size of all future allocations in the dynamic pool
     auto mpa7 = 128; // Size with which to align allocations
-    auto mpa8 =
-        umpire::strategy::DynamicPool::percent_releasable(75); // Heuristic
     name = basename + "_MixedPool_spec_";
     testAllocator<umpire::strategy::MixedPool, true>(name + "0", base_alloc);
     testAllocator<umpire::strategy::MixedPool, true>(name + "1", base_alloc,
@@ -261,8 +255,6 @@ static void runTest()
         name + "6", base_alloc, mpa1, mpa2, mpa3, mpa4, mpa5, mpa6);
     testAllocator<umpire::strategy::MixedPool, true>(
         name + "7", base_alloc, mpa1, mpa2, mpa3, mpa4, mpa5, mpa6, mpa7);
-    testAllocator<umpire::strategy::MixedPool, true>(
-        name + "8", base_alloc, mpa1, mpa2, mpa3, mpa4, mpa5, mpa6, mpa7, mpa8);
     name = basename + "_MixedPool_no_instrospection_spec_";
     testAllocator<umpire::strategy::MixedPool, false>(name + "0", base_alloc);
     testAllocator<umpire::strategy::MixedPool, false>(name + "1", base_alloc,
@@ -279,8 +271,6 @@ static void runTest()
         name + "6", base_alloc, mpa1, mpa2, mpa3, mpa4, mpa5, mpa6);
     testAllocator<umpire::strategy::MixedPool, false>(
         name + "7", base_alloc, mpa1, mpa2, mpa3, mpa4, mpa5, mpa6, mpa7);
-    testAllocator<umpire::strategy::MixedPool, false>(
-        name + "8", base_alloc, mpa1, mpa2, mpa3, mpa4, mpa5, mpa6, mpa7, mpa8);
 
     auto pa1 = 16 * 1024; // min initial allocation size
     auto pa2 = 1 * 1024;  // min allocation size
@@ -307,57 +297,9 @@ static void runTest()
     testAllocator<umpire::strategy::QuickPool, false>(name + "4", base_alloc,
                                                       pa1, pa2, pa3, pa4);
 
-    auto dpa1 = 16 * 1024; // min initial allocation size
-    auto dpa2 = 1 * 1024;  // min allocation size
-    auto dpa3 = 128;       // byte alignment
-    auto dpa4 = umpire::strategy::DynamicPool::percent_releasable(50);
-    name = basename + "_DynamicPool_spec_";
-    testAllocator<umpire::strategy::DynamicPool, true>(name + "0", base_alloc);
-    testAllocator<umpire::strategy::DynamicPool, true>(name + "1", base_alloc,
-                                                       dpa1);
-    testAllocator<umpire::strategy::DynamicPool, true>(name + "2", base_alloc,
-                                                       dpa1, dpa2);
-    testAllocator<umpire::strategy::DynamicPool, true>(name + "3", base_alloc,
-                                                       dpa1, dpa2, dpa3);
-    testAllocator<umpire::strategy::DynamicPool, true>(name + "4", base_alloc,
-                                                       dpa1, dpa2, dpa3, dpa4);
-    name = basename + "_DynamicPool_no_instrospection_spec_";
-    testAllocator<umpire::strategy::DynamicPool, false>(name + "0", base_alloc);
-    testAllocator<umpire::strategy::DynamicPool, false>(name + "1", base_alloc,
-                                                        dpa1);
-    testAllocator<umpire::strategy::DynamicPool, false>(name + "2", base_alloc,
-                                                        dpa1, dpa2);
-    testAllocator<umpire::strategy::DynamicPool, false>(name + "3", base_alloc,
-                                                        dpa1, dpa2, dpa3);
-    testAllocator<umpire::strategy::DynamicPool, false>(name + "4", base_alloc,
-                                                        dpa1, dpa2, dpa3, dpa4);
-
-    name = basename + "_DynamicPoolMap_spec_";
-    testAllocator<umpire::strategy::DynamicPoolMap, true>(name + "0",
-                                                          base_alloc);
-    testAllocator<umpire::strategy::DynamicPoolMap, true>(name + "1",
-                                                          base_alloc, dpa1);
-    testAllocator<umpire::strategy::DynamicPoolMap, true>(
-        name + "2", base_alloc, dpa1, dpa2);
-    testAllocator<umpire::strategy::DynamicPoolMap, true>(
-        name + "3", base_alloc, dpa1, dpa2, dpa3);
-    testAllocator<umpire::strategy::DynamicPoolMap, true>(
-        name + "4", base_alloc, dpa1, dpa2, dpa3, dpa4);
-    name = basename + "_DynamicPoolMap_no_instrospection_spec_";
-    testAllocator<umpire::strategy::DynamicPoolMap, false>(name + "0",
-                                                           base_alloc);
-    testAllocator<umpire::strategy::DynamicPoolMap, false>(name + "1",
-                                                           base_alloc, dpa1);
-    testAllocator<umpire::strategy::DynamicPoolMap, false>(
-        name + "2", base_alloc, dpa1, dpa2);
-    testAllocator<umpire::strategy::DynamicPoolMap, false>(
-        name + "3", base_alloc, dpa1, dpa2, dpa3);
-    testAllocator<umpire::strategy::DynamicPoolMap, false>(
-        name + "4", base_alloc, dpa1, dpa2, dpa3, dpa4);
-
-    auto lpa1 = dpa1;
-    auto lpa2 = dpa2;
-    auto lpa3 = dpa3;
+    auto lpa1 = 16 * 1024; // min initial allocation size
+    auto lpa2 = 1 * 1024;  // min allocation size
+    auto lpa3 = 128;       // byte alignment
     auto lpa4 = umpire::strategy::DynamicPoolList::percent_releasable(50);
     name = basename + "_DynamicPoolList_spec_";
     testAllocator<umpire::strategy::DynamicPoolList, true>(name + "0",

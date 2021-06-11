@@ -36,6 +36,9 @@ declarations:
   - decl: string get_backtrace(void* ptr)
   - decl: size_t get_process_memory_usage()
   - decl: size_t get_device_memory_usage(int device_id)
+  - decl: int get_major_version()
+  - decl: int get_minor_version()
+  - decl: int get_patch_version()
 
   - decl: namespace strategy
     options:
@@ -49,6 +52,12 @@ declarations:
 
       - decl: class DynamicPoolList
         cxx_header: umpire/strategy/DynamicPoolList.hpp
+        options:
+          wrap_c: false
+          wrap_fortran: false
+
+      - decl: class QuickPool
+        cxx_header: umpire/strategy/QuickPool.hpp
         options:
           wrap_c: false
           wrap_fortran: false
@@ -135,6 +144,10 @@ declarations:
           format:
             template_suffix: _list_pool
             function_suffix: ""
+        - instantiation: <umpire::strategy::QuickPool>
+          format:
+            template_suffix: _quick_pool
+            function_suffix: ""
 
       - decl: template <typename T> Allocator makeAllocator(const std::string& name, Allocator allocator, const std::string& advice_op, int device_id);
         options:
@@ -178,12 +191,20 @@ declarations:
 
 
       - decl: void registerAllocator(const std::string& name, Allocator allocator)
+      - decl: void addAlias(const std::string& name, Allocator allocator)
+      - decl: void removeAlias(const std::string& name, Allocator allocator)
 
       - decl: Allocator getAllocator(void* ptr)
         format:
           function_suffix: _for_ptr
 
       - decl: bool isAllocator(const std::string& name)
+        format:
+          function_suffix: _name
+
+      - decl: bool isAllocator(int id)
+        format:
+          function_suffix: _id
 
       - decl: bool hasAllocator(void* ptr)
 
@@ -210,6 +231,15 @@ declarations:
       - decl: void deallocate(void* ptr)
 
       - decl: size_t getSize(void* ptr)
+
+      - decl: void registerAllocation(void* ptr, size_t size, Allocator allocator)
+        splicer:
+          c: |
+            umpire::Allocator *SHCXX_allocator = static_cast<umpire::Allocator *>(allocator.addr);
+            umpire::strategy::AllocationStrategy *SHCXX_strategy = SHCXX_allocator->getAllocationStrategy();
+            SH_this->registerAllocation(ptr, umpire::util::AllocationRecord{ptr, size, SHCXX_strategy});
+
+      - decl: void deregisterAllocation(void* ptr)
 
 splicer:
   f:

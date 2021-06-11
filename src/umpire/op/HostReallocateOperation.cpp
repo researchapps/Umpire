@@ -20,7 +20,7 @@ void HostReallocateOperation::transform(
     util::AllocationRecord* current_allocation,
     util::AllocationRecord* new_allocation, std::size_t new_size)
 {
-  auto allocator = new_allocation->strategy;
+  auto allocator = umpire::Allocator(new_allocation->strategy);
   const std::size_t old_size = current_allocation->size;
 
   //
@@ -28,11 +28,11 @@ void HostReallocateOperation::transform(
   // cannot simply call ::realloc() with a pointer to a zero-length allocation.
   //
   if (old_size == 0) {
-    *new_ptr = allocator->allocate(new_size);
+    *new_ptr = allocator.allocate(new_size);
     const std::size_t copy_size = (old_size > new_size) ? new_size : old_size;
 
     ResourceManager::getInstance().copy(*new_ptr, current_ptr, copy_size);
-    allocator->deallocate(current_ptr);
+    allocator.deallocate(current_ptr);
   } else {
     auto old_record =
         ResourceManager::getInstance().deregisterAllocation(current_ptr);
@@ -45,13 +45,8 @@ void HostReallocateOperation::transform(
     }
 
     ResourceManager::getInstance().registerAllocation(
-        *new_ptr, {*new_ptr, new_size, allocator});
+        *new_ptr, {*new_ptr, new_size, new_allocation->strategy});
   }
-
-  UMPIRE_RECORD_STATISTIC("HostReallocate", "current_ptr",
-                          reinterpret_cast<uintptr_t>(current_ptr), "new_ptr",
-                          reinterpret_cast<uintptr_t>(*new_ptr), "size",
-                          new_size, "event", "reallocate");
 }
 
 } // end of namespace op

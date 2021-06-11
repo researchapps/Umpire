@@ -30,6 +30,14 @@ if (ENABLE_NUMA)
   list(APPEND umpire_cookbooks recipe_move_between_numa)
 endif ()
 
+if (ENABLE_IPC_SHARED_MEMORY)
+  blt_add_executable(
+    NAME recipe_shared_memory
+    SOURCES recipe_shared_memory.cpp
+    DEPENDS_ON ${cookbook_depends})
+  list(APPEND umpire_cookbooks recipe_shared_memory)
+endif()
+
 if (ENABLE_CUDA)
   blt_add_executable(
     NAME recipe_shrink
@@ -92,7 +100,7 @@ if (ENABLE_CUDA)
       recipe_prefetch_pool.F
       PROPERTIES
       Fortran_FORMAT FREE)
-  endif ()
+  endif()
 endif ()
 
 if (ENABLE_HIP)
@@ -101,6 +109,12 @@ if (ENABLE_HIP)
     SOURCES recipe_shrink.cpp
     DEPENDS_ON ${cookbook_depends})
   list(APPEND umpire_cookbooks recipe_shrink)
+
+  blt_add_executable(
+    NAME recipe_move_to_managed
+    SOURCES recipe_move_to_managed.cpp
+    DEPENDS_ON ${cookbook_depends})
+  list(APPEND umpire_cookbooks recipe_move_to_managed)
 
   if (ENABLE_FORTRAN)
     blt_add_executable(
@@ -164,6 +178,12 @@ if (ENABLE_FORTRAN)
     PROPERTIES
     Fortran_FORMAT FREE)
 endif ()
+
+blt_add_executable(
+  NAME recipe_strategy_name
+  SOURCES recipe_strategy_name.cpp
+  DEPENDS_ON ${cookbook_depends})
+list(APPEND umpire_cookbooks recipe_strategy_name)
 
 install(TARGETS ${umpire_cookbooks} RUNTIME DESTINATION bin)
 

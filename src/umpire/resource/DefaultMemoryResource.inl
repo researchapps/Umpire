@@ -39,35 +39,22 @@ void* DefaultMemoryResource<_allocator>::allocate(std::size_t bytes)
   void* ptr = m_allocator.allocate(bytes);
 
   UMPIRE_LOG(Debug, "(bytes=" << bytes << ") returning " << ptr);
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ptr),
-                          "size", bytes, "event", "allocate");
 
   return ptr;
 }
 
 template <typename _allocator>
-void DefaultMemoryResource<_allocator>::deallocate(void* ptr)
+void DefaultMemoryResource<_allocator>::deallocate(void* ptr, std::size_t UMPIRE_UNUSED_ARG(size))
 {
   UMPIRE_LOG(Debug, "(ptr=" << ptr << ")");
-
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ptr),
-                          "size", 0x0, "event", "deallocate");
 
   m_allocator.deallocate(ptr);
 }
 
 template <typename _allocator>
-std::size_t DefaultMemoryResource<_allocator>::getCurrentSize() const noexcept
+bool DefaultMemoryResource<_allocator>::isAccessibleFrom(Platform p) noexcept
 {
-  UMPIRE_LOG(Debug, "() returning " << 0);
-  return 0;
-}
-
-template <typename _allocator>
-std::size_t DefaultMemoryResource<_allocator>::getHighWatermark() const noexcept
-{
-  UMPIRE_LOG(Debug, "() returning " << 0);
-  return 0;
+  return m_allocator.isAccessible(p);
 }
 
 template <typename _allocator>

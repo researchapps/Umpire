@@ -16,6 +16,7 @@
 
 #include "camp/resource.hpp"
 #include "umpire/Allocator.hpp"
+#include "umpire/Tracking.hpp"
 #include "umpire/resource/MemoryResourceTypes.hpp"
 #include "umpire/strategy/AllocationStrategy.hpp"
 #include "umpire/util/AllocationMap.hpp"
@@ -28,6 +29,10 @@ class MemoryOperation;
 
 namespace strategy {
 class ZeroByteHandler;
+
+namespace mixins {
+class AllocateNull;
+}
 }
 
 /*!
@@ -85,6 +90,17 @@ class ResourceManager {
   Allocator getDefaultAllocator();
 
   /*!
+   * \brief Get the names for existing Resources.
+   *
+   * The Memory Resource Registry dynamically populates available memory resource
+   * types based on what's available. This function returns those names so they
+   * can be used to determine allocator accessibility.
+   * 
+   * \return The available resource names.
+   */
+   std::vector<std::string> getResourceNames();
+
+  /*!
    * \brief Set the default Allocator.
    *
    * The default Allocator is used whenever an Allocator is required and one
@@ -100,6 +116,13 @@ class ResourceManager {
   template <typename Strategy, bool introspection = true, typename... Args>
   Allocator makeAllocator(const std::string& name, Args&&... args);
 
+  template<typename Strategy, typename... Args>
+  Allocator makeAllocator(const std::string& name, Tracking tracked, Args&&... args);
+
+  Allocator makeResource(const std::string& name);
+
+  Allocator makeResource(const std::string& name, MemoryResourceTraits traits);
+
   /*!
    * \brief Register an Allocator with the ResourceManager.
    *
@@ -111,7 +134,35 @@ class ResourceManager {
    * \param name Name to register Allocator with.
    * \param allocator Allocator to register.
    */
+  UMPIRE_DEPRECATE("addAlias should be used instead")
   void registerAllocator(const std::string& name, Allocator allocator);
+
+  /*!
+   * \brief Add an Allocator alias.
+   *
+   * After this call, allocator can be retrieved by calling getAllocator(name).
+   *
+   * The same Allocator can have multiple aliases.
+   *
+   * \param name Name to alias Allocator with.
+   * \param allocator Allocator to register.
+   */
+  void addAlias(const std::string& name, Allocator allocator);
+
+  /*!
+   * \brief Remove an Allocator alias.
+   *
+   * After calling, allocator can no longer be accessed by calling
+   * getAllocator(name). If allocator is not registered under name, an error
+   * will be thrown.
+   *
+   * If one of the default resource names (e.g. HOST) is used, an error will be
+   * thrown.
+   *
+   * \param name Name to deregister Allocator with.
+   * \param allocator Allocator to deregister.
+   */
+  void removeAlias(const std::string& name, Allocator allocator);
 
   /*!
    * \brief Get the Allocator used to allocate ptr.
@@ -122,6 +173,8 @@ class ResourceManager {
   Allocator getAllocator(void* ptr);
 
   bool isAllocator(const std::string& name) noexcept;
+
+  bool isAllocator(int id) noexcept;
 
   /*!
    * \brief Does the given pointer have an associated Allocator.
@@ -153,6 +206,7 @@ class ResourceManager {
    * \brief Check whether the named Allocator exists.
    *
    */
+  UMPIRE_DEPRECATE("Use isAllocator instead.")
   bool isAllocatorRegistered(const std::string& name);
 
   /*!
@@ -299,6 +353,7 @@ class ResourceManager {
   friend void print_allocator_records(Allocator, std::ostream&);
   friend std::vector<util::AllocationRecord> get_allocator_records(Allocator);
   friend strategy::ZeroByteHandler;
+  friend strategy::mixins::AllocateNull;
 };
 
 } // end namespace umpire

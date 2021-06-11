@@ -7,6 +7,7 @@
 #include "umpire/resource/HostResourceFactory.hpp"
 
 #include "umpire/alloc/MallocAllocator.hpp"
+#include "umpire/config.hpp"
 #include "umpire/resource/DefaultMemoryResource.hpp"
 #if defined(UMPIRE_ENABLE_NUMA)
 #include "umpire/alloc/PosixMemalignAllocator.hpp"
@@ -14,6 +15,10 @@
 
 #include "umpire/util/detect_vendor.hpp"
 #include "umpire/util/make_unique.hpp"
+
+#if defined(UMPIRE_ENABLE_OPENMP_TARGET)
+#include "omp.h"
+#endif
 
 namespace umpire {
 namespace resource {
@@ -63,8 +68,13 @@ MemoryResourceTraits HostResourceFactory::getDefaultTraits()
   traits.size = 0;
 
   traits.vendor = cpu_vendor_type();
-  traits.kind = MemoryResourceTraits::memory_type::UNKNOWN;
+  traits.kind = MemoryResourceTraits::memory_type::unknown;
   traits.used_for = MemoryResourceTraits::optimized_for::any;
+  traits.resource = MemoryResourceTraits::resource_type::host;
+
+#if defined(UMPIRE_ENABLE_OPENMP_TARGET)
+  traits.id = omp_get_initial_device();
+#endif
 
   return traits;
 }

@@ -40,19 +40,15 @@ void* NullMemoryResource::allocate(std::size_t bytes)
 #endif
 
   UMPIRE_LOG(Debug, "(bytes=" << bytes << ") returning " << ptr);
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ptr),
-                          "size", bytes, "event", "allocate");
 
   m_size_map.insert(ptr, bytes);
 
   return ptr;
 }
 
-void NullMemoryResource::deallocate(void* ptr)
+void NullMemoryResource::deallocate(void* ptr, std::size_t UMPIRE_UNUSED_ARG(size))
 {
   UMPIRE_LOG(Debug, "(ptr=" << ptr << ")");
-  UMPIRE_RECORD_STATISTIC(getName(), "ptr", reinterpret_cast<uintptr_t>(ptr),
-                          "size", 0x0, "event", "deallocate");
 
   auto iter = m_size_map.find(ptr);
   auto size = iter->second;
@@ -74,6 +70,13 @@ std::size_t NullMemoryResource::getCurrentSize() const noexcept
 std::size_t NullMemoryResource::getHighWatermark() const noexcept
 {
   return 0;
+}
+
+bool NullMemoryResource::isAccessibleFrom(Platform p) noexcept
+{
+  if(p != Platform::undefined)
+    UMPIRE_LOG(Debug, "NullMemoryResource: platform is not accessible");
+  return false;
 }
 
 Platform NullMemoryResource::getPlatform() noexcept

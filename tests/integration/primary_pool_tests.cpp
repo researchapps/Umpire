@@ -10,15 +10,13 @@
 
 #include "camp/camp.hpp"
 #include "gtest/gtest.h"
+#include "test_helpers.hpp"
 #include "umpire/ResourceManager.hpp"
 #include "umpire/config.hpp"
 #include "umpire/strategy/DynamicPoolList.hpp"
 #include "umpire/strategy/DynamicPoolMap.hpp"
 #include "umpire/strategy/QuickPool.hpp"
-
-template <typename T>
-struct tag_to_string {
-};
+#include "umpire/util/wrap_allocator.hpp"
 
 template <>
 struct tag_to_string<umpire::strategy::DynamicPoolList> {
@@ -34,54 +32,6 @@ template <>
 struct tag_to_string<umpire::strategy::QuickPool> {
   static constexpr const char* value = "QuickPool";
 };
-
-struct host_resource_tag {
-};
-
-template <>
-struct tag_to_string<host_resource_tag> {
-  static constexpr const char* value = "HOST";
-};
-
-#if defined(UMPIRE_ENABLE_DEVICE)
-struct device_resource_tag {
-};
-
-template <>
-struct tag_to_string<device_resource_tag> {
-  static constexpr const char* value = "DEVICE";
-};
-#endif
-
-#if defined(UMPIRE_ENABLE_UM)
-struct um_resource_tag {
-};
-
-template <>
-struct tag_to_string<um_resource_tag> {
-  static constexpr const char* value = "UM";
-};
-#endif
-
-#if defined(UMPIRE_ENABLE_PINNED)
-struct pinned_resource_tag {
-};
-
-template <>
-struct tag_to_string<pinned_resource_tag> {
-  static constexpr const char* value = "PINNED";
-};
-#endif
-
-#if defined(UMPIRE_ENABLE_FILE_RESOURCE)
-struct file_resource_tag {
-};
-
-template <>
-struct tag_to_string<file_resource_tag> {
-  static constexpr const char* value = "FILE";
-};
-#endif
 
 using ResourceTypes = camp::list<host_resource_tag
 #if defined(UMPIRE_ENABLE_DEVICE)
@@ -106,16 +56,6 @@ using PoolTypes =
     camp::list<umpire::strategy::DynamicPoolList,
                umpire::strategy::DynamicPoolMap, umpire::strategy::QuickPool>;
 using TestTypes = camp::cartesian_product<PoolTypes, ResourceTypes>;
-
-//
-// Unroll types for gtest testing::Types
-//
-template <class T>
-struct Test;
-template <class... T>
-struct Test<camp::list<T...>> {
-  using Types = ::testing::Types<T...>;
-};
 
 using PoolTestTypes = Test<TestTypes>::Types;
 
@@ -220,15 +160,18 @@ TYPED_TEST(PrimaryPoolTest, BlocksStatistic)
                         this->m_min_pool_growth_size / 8););
   }
 
-  if (std::is_same<Pool, umpire::strategy::DynamicPoolMap>::value) {
-    dynamic_pool->coalesce();
-  }
   ASSERT_EQ(dynamic_pool->getBlocksInPool(), 5);
 
   // 3 BLocks (1 Free, 2 allocated)
   for (int i{3}; i >= 2; --i) {
     ASSERT_NO_THROW(this->m_allocator->deallocate(allocs[i]););
   }
+
+  //
+  // The DynamicPoolMap does not recombine blocks dynamically, so we have
+  // to (carefully) coalesce them here to have our total block count match
+  // with the other pools.
+  //
   if (std::is_same<Pool, umpire::strategy::DynamicPoolMap>::value) {
     dynamic_pool->coalesce();
   }
@@ -237,9 +180,6 @@ TYPED_TEST(PrimaryPoolTest, BlocksStatistic)
   // 1 BLocks (1 Free, 0 allocated) - Auto-collapsed
   for (int i{1}; i >= 0; --i) {
     ASSERT_NO_THROW(this->m_allocator->deallocate(allocs[i]););
-  }
-  if (std::is_same<Pool, umpire::strategy::DynamicPoolMap>::value) {
-    dynamic_pool->coalesce();
   }
   ASSERT_EQ(dynamic_pool->getBlocksInPool(), 1);
 
@@ -252,12 +192,16 @@ TYPED_TEST(PrimaryPoolTest, Sizes)
   void* data{nullptr};
   const std::size_t size{this->m_initial_pool_size - 1};
 
+  using Pool = typename TestFixture::Pool;
+  auto pool = umpire::util::unwrap_allocator<Pool>(*this->m_allocator);
+
   ASSERT_NO_THROW(data = this->m_allocator->allocate(size););
 
   ASSERT_EQ(this->m_allocator->getSize(data), size);
   ASSERT_GE(this->m_allocator->getCurrentSize(), size);
   ASSERT_EQ(this->m_allocator->getHighWatermark(), size);
   ASSERT_EQ(this->m_allocator->getActualSize(), this->m_initial_pool_size);
+  ASSERT_EQ(pool->getActualHighwaterMark(), this->m_initial_pool_size);
 
   void* data2{nullptr};
 
@@ -275,6 +219,8 @@ TYPED_TEST(PrimaryPoolTest, Sizes)
             this->m_initial_pool_size + this->m_min_pool_growth_size);
 
   ASSERT_EQ(this->m_allocator->getSize(data2), this->m_initial_pool_size);
+
+  ASSERT_EQ(pool->getActualHighwaterMark(), this->m_initial_pool_size*2);
 
   ASSERT_NO_THROW({ this->m_allocator->deallocate(data2); });
 }
@@ -322,7 +268,8 @@ TYPED_TEST(PrimaryPoolTest, Works)
     this->m_allocator->deallocate(ptr_two);
   });
 
-  ASSERT_EQ(this->m_allocator->getCurrentSize(), 62);
+  // NOTE: Size is 64 since it's rounded up
+  ASSERT_EQ(this->m_allocator->getCurrentSize(), 64);
   EXPECT_NO_THROW(this->m_allocator->release());
 
   ASSERT_LE(this->m_allocator->getActualSize(), this->m_initial_pool_size);
@@ -621,6 +568,43 @@ TYPED_TEST(PrimaryPoolTest, heuristic_75_percent)
   ASSERT_EQ(dynamic_pool->getBlocksInPool(), 4);
   ASSERT_NO_THROW({ alloc.deallocate(a[1]); });  // 75% releasable
   ASSERT_EQ(dynamic_pool->getBlocksInPool(), 2); // Collapse happened
+  ASSERT_NO_THROW({ alloc.deallocate(a[0]); });  // 100% releasable
+  ASSERT_EQ(dynamic_pool->getBlocksInPool(), 1); // Collapse happened
+}
+
+TYPED_TEST(PrimaryPoolTest, heuristic_100_percent)
+{
+  const int initial_size{1024};
+  const int subsequent_min_size{1024};
+  const int alignment{1024};
+  using Pool = typename TestFixture::Pool;
+  auto& rm = umpire::ResourceManager::getInstance();
+
+  auto h_fun = Pool::percent_releasable(100);
+  auto alloc = rm.makeAllocator<Pool>(this->m_pool_name + std::string{"_100"},
+                                      rm.getAllocator(this->m_resource_name),
+                                      initial_size, subsequent_min_size,
+                                      alignment, h_fun);
+
+  auto dynamic_pool = umpire::util::unwrap_allocator<Pool>(alloc);
+
+  ASSERT_NE(dynamic_pool, nullptr);
+
+  void* a[4];
+  for (int i{0}; i < 4; ++i) {
+    ASSERT_NO_THROW({ a[i] = alloc.allocate(768); });
+    ASSERT_EQ(alloc.getActualSize(), (1024 * (i + 1)));
+    ASSERT_EQ(dynamic_pool->getBlocksInPool(), (i + 1));
+    ASSERT_EQ(dynamic_pool->getReleasableSize(), 0);
+  }
+
+  ASSERT_EQ(dynamic_pool->getBlocksInPool(), 4);
+  ASSERT_NO_THROW({ alloc.deallocate(a[3]); }); // 25% releasable
+  ASSERT_EQ(dynamic_pool->getBlocksInPool(), 4);
+  ASSERT_NO_THROW({ alloc.deallocate(a[2]); }); // 50% releasable
+  ASSERT_EQ(dynamic_pool->getBlocksInPool(), 4);
+  ASSERT_NO_THROW({ alloc.deallocate(a[1]); });  // 75% releasable
+  ASSERT_EQ(dynamic_pool->getBlocksInPool(), 4); // Collapse happened
   ASSERT_NO_THROW({ alloc.deallocate(a[0]); });  // 100% releasable
   ASSERT_EQ(dynamic_pool->getBlocksInPool(), 1); // Collapse happened
 }

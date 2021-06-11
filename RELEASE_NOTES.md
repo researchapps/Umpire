@@ -1,3 +1,81 @@
+# v5.0.1
+
+- Fixed bug where zero-byte allocations from Umpire were sometimes incorrectly
+  reported as not being Umpire allocations
+
+# v5.0.0
+
+- Memory Resource header and source files for HIP
+
+- Unified Memory support for HIP, including testing and benchmarking (temp support for Fortran).
+
+- Added a getParent functionality for retrieving the memory resource of an allocator.
+
+- Changed enumeration names from all upper case to all lower case in order to
+  avoid name collisions.
+
+- Fixed up broken source links in tutorial documentation.
+
+- registerAllocator is deprecated, addAlias should be used instead.
+
+- Moved backend-specific resource code out of ResourceManager and into resource::MemoryResourceRegistry.
+
+- Fixed accounting for number of releasable bytes in Quickpool that was causing
+  coalesce operations to not work properly. 
+
+# v4.1.2
+
+- Added workaround for incorrect nvcc compiler warning:
+  "warning: missing return statement at end of non-void function"
+  occuring in one Umpire's header files.
+
+# v4.1.1
+
+- Fixed DynamicPoolMap deallocate to make coalesce check O(1) again.
+
+- Initialize m_default_allocator to HOST if not set explicitly.
+
+# v4.1.0
+
+- QuickPool available via the C & Fortran APIs.
+
+- Resources are now created on-demand when accessed for the first time.
+
+- Peer access is no longer automatically enabled for CUDA and HIP.
+
+- Added cmake check to deterime if build subsystem capable of ASAN.
+
+- Fixed ASAN poisoning to limit it to what user originally requested and not
+  rounded amount.
+
+- Improved resilliance of primary pool destructors so that giving back
+  previously allocated blocks to a device that has already been cleaned up
+  will no longer throw an error, but instead will now be logged and ignored.
+
+# v4.0.1
+
+- Fixed Umpire builds with MPI enabled
+
+- Added missing wrapUmpire.hpp to installation directory
+
+# v4.0.0
+
+- Added a FILE memory resource that allocates memory using mmap'd files. This
+  can be used to allocate memory from the burst buffers on machines like Sierra
+  and Lassen.
+
+- All pools now have an "alignment" parameter that can be provided to the
+  constructor.
+
+- MemoryResourceTraits now includes a `resource` member that can be used to
+  indentify the underlying resource for any Allocator.
+
+- Bundled tpl cxxopts has been replaced by CLI11 (only used when ENABLE_TOOLS=On)
+
+- Fixed memory leaks in DynamicPoolList, QuickPool.
+
+- Fixed reallocate operation when called on an allocation from a pool.
+
 # v3.0.0
 
 - Added support for multiple GPU devices, detected and registered as "DEVICE_N"

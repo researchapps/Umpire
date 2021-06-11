@@ -134,7 +134,9 @@ TEST_P(AllocatorCTest, IsAllocator)
 {
   umpire_resourcemanager rm;
   umpire_resourcemanager_get_instance(&rm);
-  ASSERT_EQ(true, umpire_resourcemanager_is_allocator(&rm, GetParam()));
+  ASSERT_EQ(true, umpire_resourcemanager_is_allocator_name(&rm, GetParam()));
+  int id = umpire_allocator_get_id(&m_allocator);
+  ASSERT_EQ(true, umpire_resourcemanager_is_allocator_id(&rm, id));
 }
 
 TEST_P(AllocatorCTest, HasAllocator)
@@ -316,6 +318,70 @@ TEST_P(ListPoolAllocatorCTest, AllocateDeallocateNothing)
 INSTANTIATE_TEST_SUITE_P(ListPools, ListPoolAllocatorCTest,
                          ::testing::ValuesIn(pool_names));
 
+class QuickPoolAllocatorCTest : public ::testing::TestWithParam<const char*> {
+ public:
+  virtual void SetUp()
+  {
+    std::string pool_name =
+        std::string{GetParam()} + "_c_pool" + std::to_string(unique_name++);
+
+    umpire_resourcemanager rm;
+    umpire_resourcemanager_get_instance(&rm);
+    umpire_resourcemanager_get_allocator_by_name(&rm, GetParam(), &m_allocator);
+    ;
+    umpire_resourcemanager_make_allocator_quick_pool(
+        &rm, pool_name.c_str(), m_allocator, m_big, m_small, &m_pool);
+  }
+
+  virtual void TearDown()
+  {
+    umpire_allocator_delete(&m_allocator);
+    umpire_allocator_delete(&m_pool);
+  }
+
+  umpire_allocator m_allocator;
+  umpire_allocator m_pool;
+
+#if defined(UMPIRE_ENABLE_DEVICE)
+  const std::size_t m_pool_init = 4294967296 + 64;
+#else
+  const std::size_t m_pool_init = 1024 * 1024 * 64;
+#endif
+  const std::size_t m_big = 1024 * 1024;
+  const std::size_t m_small = 64;
+  const std::size_t m_nothing = 0;
+};
+
+TEST_P(QuickPoolAllocatorCTest, AllocateDeallocateBig)
+{
+  double* data =
+      (double*)umpire_allocator_allocate(&m_pool, m_big * sizeof(double));
+  ASSERT_NE(nullptr, data);
+
+  umpire_allocator_deallocate(&m_pool, data);
+}
+
+TEST_P(QuickPoolAllocatorCTest, AllocateDeallocateSmall)
+{
+  double* data =
+      (double*)umpire_allocator_allocate(&m_pool, m_small * sizeof(double));
+  ASSERT_NE(nullptr, data);
+
+  umpire_allocator_deallocate(&m_pool, data);
+}
+
+TEST_P(QuickPoolAllocatorCTest, AllocateDeallocateNothing)
+{
+  double* data =
+      (double*)umpire_allocator_allocate(&m_pool, m_nothing * sizeof(double));
+  ASSERT_NE(nullptr, data);
+
+  umpire_allocator_deallocate(&m_pool, data);
+}
+
+INSTANTIATE_TEST_SUITE_P(QuickPools, QuickPoolAllocatorCTest,
+                         ::testing::ValuesIn(pool_names));
+
 class FixedPoolAllocatorCTest : public ::testing::TestWithParam<const char*> {
  public:
   virtual void SetUp()
@@ -429,6 +495,28 @@ TEST(Allocators, GetInvalidId)
   int id = UMPIRE_INVALID_ALLOCATOR_ID;
   int cpp_id = umpire::invalid_allocator_id;
 
-  ASSERT_EQ(0xDEADBEEF, id);
+  ASSERT_EQ(0xDEADBEE, id);
   ASSERT_EQ(id, cpp_id);
+}
+
+TEST(Allocators, RegisterAllocation)
+{
+  umpire_resourcemanager rm;
+  umpire_allocator allocator;
+  umpire_resourcemanager_get_instance(&rm);
+  umpire_resourcemanager_get_allocator_by_name(&rm, "HOST", &allocator);
+
+  double d = 1.0;
+
+  ASSERT_NO_THROW(
+    umpire_resourcemanager_register_allocation(&rm, &d, sizeof(double), allocator)
+  );
+
+  ASSERT_TRUE(umpire_resourcemanager_has_allocator(&rm, &d));
+
+  ASSERT_NO_THROW(
+    umpire_resourcemanager_deregister_allocation(&rm, &d)
+  );
+
+  umpire_allocator_delete(&allocator);
 }

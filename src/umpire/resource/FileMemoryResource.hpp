@@ -79,11 +79,13 @@ class FileMemoryResource : public MemoryResource {
    *
    * \param ptr Pointer location used to look up its information in m_size_map
    */
-  void deallocate(void* ptr);
+  void deallocate(void* ptr, std::size_t size);
 
   std::size_t getCurrentSize() const noexcept;
   std::size_t getHighWatermark() const noexcept;
 
+  bool isAccessibleFrom(Platform p) noexcept;
+  
   Platform getPlatform() noexcept;
   static int s_file_counter;
 
@@ -97,6 +99,8 @@ class FileMemoryResource : public MemoryResource {
    * \param std::pair Paring of the file name and the size of the file
    */
   util::MemoryMap<std::pair<const std::string, std::size_t>> m_size_map;
+
+  bool isPageable() noexcept;
 };
 
 } // end of namespace resource

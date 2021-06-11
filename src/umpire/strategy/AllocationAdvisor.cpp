@@ -31,7 +31,7 @@ AllocationAdvisor::AllocationAdvisor(const std::string& name, int id,
                                      const std::string& advice_operation,
                                      Allocator accessing_allocator,
                                      int device_id)
-    : AllocationStrategy(name, id),
+    : AllocationStrategy{name, id, allocator.getAllocationStrategy(), "AllocationAdvisor"},
       m_allocator{allocator.getAllocationStrategy()},
       m_device{device_id}
 {
@@ -51,15 +51,15 @@ AllocationAdvisor::AllocationAdvisor(const std::string& name, int id,
 
 void* AllocationAdvisor::allocate(std::size_t bytes)
 {
-  void* ptr = m_allocator->allocate(bytes);
+  void* ptr = m_allocator->allocate_internal(bytes);
   m_advice_operation->apply(ptr, nullptr, m_device, bytes);
 
   return ptr;
 }
 
-void AllocationAdvisor::deallocate(void* ptr)
+void AllocationAdvisor::deallocate(void* ptr, std::size_t size)
 {
-  m_allocator->deallocate(ptr);
+  m_allocator->deallocate_internal(ptr, size);
 }
 
 Platform AllocationAdvisor::getPlatform() noexcept
