@@ -20,6 +20,8 @@ class Umpire(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     version('develop', branch='develop', submodules='True')
     version('main', branch='main', submodules='True')
+    version('5.0.1', tag='v5.0.1', submodules='True')
+    version('5.0.0', tag='v5.0.0', submodules='True')
     version('4.1.2', tag='v4.1.2', submodules='True')
     version('4.1.1', tag='v4.1.1', submodules='True')
     version('4.1.0', tag='v4.1.0', submodules='True')
@@ -58,6 +60,7 @@ class Umpire(CachedCMakePackage, CudaPackage, ROCmPackage):
     variant('examples', default=True, description='Build Umpire Examples')
     variant('tests', default='none', values=('none', 'basic', 'benchmarks'),
             multi=False, description='Tests to run')
+    variant('caliper', default=False, description='Build with Caliper support')
 
     depends_on('cmake@3.8:', type='build')
     depends_on('cmake@3.9:', when='+cuda', type='build')
@@ -85,6 +88,7 @@ class Umpire(CachedCMakePackage, CudaPackage, ROCmPackage):
     # currently only available for cuda.
     conflicts('+shared', when='+cuda')
 
+    depends_on('caliper', when='+caliper')
 
     def _get_sys_type(self, spec):
         sys_type = spec.architecture
@@ -160,6 +164,8 @@ class Umpire(CachedCMakePackage, CudaPackage, ROCmPackage):
         entries.append(cmake_cache_option("ENABLE_OPENMP", '+openmp' in spec))
         entries.append(cmake_cache_option("ENABLE_BENCHMARKS", 'tests=benchmarks' in spec))
         entries.append(cmake_cache_option("ENABLE_EXAMPLES", '+examples' in spec))
+        entries.append(cmake_cache_option("ENABLE_CALIPER", '+caliper' in spec))
+        entries.append(cmake_cache_path("caliper_DIR", spec['caliper'].prefix))
 
         return entries
 

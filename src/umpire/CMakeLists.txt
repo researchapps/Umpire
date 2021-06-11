@@ -85,12 +85,6 @@ set (umpire_depends
   umpire_util
   umpire_tpl_judy)
 
-if (ENABLE_CALIPER)
-  set (umpire_depends
-    ${umpire_depends}
-    cali)
-endif ()
-
 if (ENABLE_OPENMP_TARGET)
   set (umpire_depends
     ${umpire_depends}

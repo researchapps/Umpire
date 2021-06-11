@@ -80,7 +80,7 @@ endif ()
 if (ENABLE_CALIPER)
   set (umpire_util_depends
     ${umpire_util_depends}
-    cali)
+    caliper)
 endif ()
 
 if (ENABLE_OPENMP_TARGET)

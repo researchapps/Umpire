@@ -57,11 +57,6 @@ endif ()
 
 if (ENABLE_CALIPER)
   find_package(caliper REQUIRED)
-
-  blt_register_library(
-    NAME cali
-    INCLUDES ${caliper_INCLUDE_DIR}
-    LIBRARIES caliper) 
 endif ()
 
 set(TPL_DEPS)

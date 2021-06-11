@@ -130,7 +130,7 @@ if (ENABLE_CALIPER AND ENABLE_CUDA)
   blt_add_executable(
     NAME caliper_example
     SOURCES caliper_example.cpp
-    DEPENDS_ON umpire cali cuda)
+    DEPENDS_ON umpire cuda)
 endif ()
 
 install(TARGETS ${umpire_examples} RUNTIME DESTINATION bin)
