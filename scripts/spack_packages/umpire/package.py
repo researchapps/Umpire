@@ -102,10 +102,14 @@ class Umpire(CMakePackage, CudaPackage):
     variant('asan', default=False, description='Enable ASAN')
     variant('sanitizer_tests', default=False, description='Enable address sanitizer tests')
 
+    variant('caliper', default=False, description='Enable Caliper support')
+
     depends_on('cmake@3.8:', type='build')
     depends_on('cmake@3.9:', when='+cuda', type='build')
     depends_on('mpi', when='+mpi')
     depends_on('hip', when='+hip')
+    depends_on('caliper', when='+caliper')
+    depends_on('caliper+cuda', when='+caliper+cuda')
 
     conflicts('+numa', when='@:0.3.2')
     conflicts('~c', when='+fortran', msg='Fortran API requires C API')
@@ -388,6 +392,8 @@ class Umpire(CMakePackage, CudaPackage):
         cfg.write(cmake_cache_option("ENABLE_WARNINGS_AS_ERRORS", '+werror' in spec))
         cfg.write(cmake_cache_option("ENABLE_ASAN", '+asan' in spec))
         cfg.write(cmake_cache_option("ENABLE_SANITIZER_TESTS", '+sanitizer_tests' in spec))
+        cfg.write(cmake_cache_option("ENABLE_CALIPER", '+caliper' in spec))
+        cfg.write(cmake_cache_entry("caliper_DIR", spec['caliper'].prefix))
 
         #######################
         # Close and save

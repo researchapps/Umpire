@@ -134,3 +134,8 @@ gcc_8_3_1_numa:
   variables:
     SPEC: "+fortran+numa%gcc@8.3.1"
   extends: .build_and_test_on_lassen
+
+gcc_8_3_1_cuda_caliper:
+  variables:
+    SPEC: "+fortran+cuda+caliper %gcc@8.3.1 ^cuda@10.1.168"
+  extends: .build_and_test_on_lassen
