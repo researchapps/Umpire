@@ -392,8 +392,10 @@ class Umpire(CMakePackage, CudaPackage):
         cfg.write(cmake_cache_option("ENABLE_WARNINGS_AS_ERRORS", '+werror' in spec))
         cfg.write(cmake_cache_option("ENABLE_ASAN", '+asan' in spec))
         cfg.write(cmake_cache_option("ENABLE_SANITIZER_TESTS", '+sanitizer_tests' in spec))
+
         cfg.write(cmake_cache_option("ENABLE_CALIPER", '+caliper' in spec))
-        cfg.write(cmake_cache_entry("caliper_DIR", spec['caliper'].prefix))
+        if '+caliper' in spec:
+            cfg.write(cmake_cache_entry("caliper_DIR", spec['caliper'].prefix))
 
         #######################
         # Close and save
