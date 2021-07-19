@@ -15,13 +15,14 @@
 #include "umpire/tpl/json/json.hpp"
 
 namespace umpire {
-namespace util {
+namespace event {
+
+enum class category {operation, statistic};
 
 class event
 {
 public:
   class builder;
-  enum class category { operation, statistic};
 
 protected:
   std::string m_name{"anon"};
@@ -77,7 +78,7 @@ public:
     return *this;
   }
 
-  void record()
+  void record(const recorder& r)
   {
     m_event.m_timestamp = std::chrono::system_clock::now();
 
