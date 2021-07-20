@@ -7,12 +7,12 @@
 
 set (umpire_event_headers
   event.hpp
-  recorder.hpp
-  event_store.hpp)
+  file_recorder.hpp)
 
 set (umpire_event_sources
-  recorder.cpp
-  event_store.cpp)
+  file_recorder.cpp)
+
+set (umpire_event_depends umpire_tpl_json)
 
 blt_add_library(
   NAME umpire_event
@@ -20,3 +20,21 @@ blt_add_library(
   SOURCES ${umpire_event_sources}
   DEPENDS_ON ${umpire_event_depends}
 )
+
+target_include_directories(
+  umpire_event
+  PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
+  $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+install(TARGETS
+  umpire_event
+  EXPORT umpire-targets
+  RUNTIME DESTINATION lib
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib)
+
+install(FILES
+  ${umpire_event_headers}
+  DESTINATION include/umpire/event)

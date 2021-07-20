@@ -11,7 +11,8 @@
 #include "umpire/Replay.hpp"
 #include "umpire/config.hpp"
 #include "umpire/util/Macros.hpp"
-#include "umpire/util/event.hpp"
+#include "umpire/event/event.hpp"
+#include "umpire/event/file_recorder.hpp"
 
 namespace umpire {
 
@@ -39,15 +40,15 @@ inline void* Allocator::allocate(std::size_t bytes)
   UMPIRE_REPLAY("\"event\": \"allocate\", \"payload\": { \"allocator_ref\": \""
                 << m_allocator << "\", \"size\": " << bytes << " }, \"result\": { \"memory_ptr\": \"" << ret << "\" }");
   
-  umpire::util::event::builder().name("allocate")
-    .category(util::event::category::operation)
+  umpire::event::event::builder().name("allocate")
+    .category(event::category::operation)
     .arg("allocator_ref", (void*)m_allocator)
     .arg("size", bytes)
     .arg("pointer", ret)
     .tag(m_allocator->getName())
     .tag("testing")
     .tag("replay")
-    .record();
+    .record(umpire::event::file_recorder{});
 
   return ret;
 }
