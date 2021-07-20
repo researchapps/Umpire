@@ -7,6 +7,7 @@
 add_subdirectory(tpl)
 add_subdirectory(resource)
 add_subdirectory(alloc)
+add_subdirectory(event)
 add_subdirectory(op)
 add_subdirectory(util)
 add_subdirectory(strategy)
@@ -104,11 +105,13 @@ set (umpire_depends
   umpire_alloc
   umpire_op
   umpire_util
+  umpire_event
   umpire_tpl_judy)
 
 if (ENABLE_OPENMP_TARGET)
   set (umpire_depends
     ${umpire_depends}
+    umpire_event
     openmp)
 endif ()
 

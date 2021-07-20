@@ -11,8 +11,6 @@
 #include <string>
 #include <vector>
 
-#include "umpire/Replay.hpp"
-#include "umpire/tpl/json/json.hpp"
 
 namespace umpire {
 namespace event {
@@ -24,13 +22,16 @@ class event
 public:
   class builder;
 
-protected:
+  event() :
+    m_timestamp{std::chrono::system_clock::now()}
+  {}
+
   std::string m_name{"anon"};
   category m_category{category::statistic};
   std::vector<std::string> m_tags{};
   std::vector<std::pair<std::string, int>> m_int_args{};
   std::vector<std::pair<std::string, std::string>> m_string_args{};
-  std::chrono::time_point<std::chrono::system_clock> m_timestamp{};
+  const std::chrono::time_point<std::chrono::system_clock> m_timestamp{};
 };
 
 class event::builder
@@ -44,7 +45,7 @@ public:
     return *this;
   }
 
-  builder& category(event::category c) {
+  builder& category(category c) {
     m_event.m_category = c;
     return *this;
   }
@@ -78,38 +79,10 @@ public:
     return *this;
   }
 
-  void record(const recorder& r)
+  template<typename Recorder>
+  void record(Recorder&& r)
   {
-    m_event.m_timestamp = std::chrono::system_clock::now();
-
-    nlohmann::json je;
-
-    je["name"] = m_event.m_name;
-    // TODO: only handles the two event types
-    je["category"] = (m_event.m_category == event::category::operation ) ? "operation" : "statistic";
-    for (const auto& it : m_event.m_int_args ) {
-      std::string name;
-      int value;
-      std::tie(name, value) = it;
-      je["args"][name] = value;
-    }
-
-    for (const auto& it : m_event.m_string_args ) {
-      std::string name;
-      std::string value;
-      std::tie(name, value) = it;
-      je["args"][name] = value;
-    }
-
-    for (const auto& tag : m_event.m_tags) {
-      je["tags"] += tag;
-    }
-
-    je["timestamp"] = std::to_string(static_cast<long>(std::chrono::time_point_cast<std::chrono::nanoseconds>(m_event.m_timestamp).time_since_epoch().count()));
-
-    std::cout << je << std::endl;
-
-    //umpire::Replay::getReplayLogger()->logMessage(je.dump()); 
+    r.record(m_event);
   }
 
 private:
