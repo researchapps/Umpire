@@ -9,18 +9,12 @@
 
 #include "umpire/tpl/json/json.hpp"
 
-#if !defined(_MSC_VER)
-#include <unistd.h> // getpid()
-#else
-#include <process.h>
-#define getpid _getpid
-#include <direct.h>
-#endif
-
 namespace umpire {
 namespace event {
 
-std::ofstream file_recorder::m_fstream{"umpire." + std::to_string(getpid()) + ".stats"};
+file_recorder::file_recorder(const std::string& filename) :
+  m_fstream{filename}
+{}
 
 void 
 file_recorder::record(event e) {

@@ -4,27 +4,28 @@
 //
 // SPDX-License-Identifier: (MIT)
 //////////////////////////////////////////////////////////////////////////////
-#ifndef UMPIRE_recorder_HPP
-#define UMPIRE_recorder_HPP
 
-#include "umpire/event/event.hpp"
+#include "umpire/event/recorder_factory.hpp"
 
-#include <fstream>
+#if !defined(_MSC_VER)
+#include <unistd.h> // getpid()
+#else
+#include <process.h>
+#define getpid _getpid
+#include <direct.h>
+#endif
 
 namespace umpire {
 namespace event {
 
-class file_recorder {
-  public:
-  
-  file_recorder(const std::string& filename);
+file_recorder&
+recorder_factory::get_recorder()
+{
+  static const std::string filename{"umpire." + std::to_string(getpid()) + ".stats"};
+  static file_recorder recorder{filename};
 
-  void record(event e);
-
-  private:
-  std::ofstream m_fstream;
-};
+  return recorder;
+}
 
 }
 }
-#endif

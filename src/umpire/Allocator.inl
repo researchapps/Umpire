@@ -12,7 +12,7 @@
 #include "umpire/config.hpp"
 #include "umpire/util/Macros.hpp"
 #include "umpire/event/event.hpp"
-#include "umpire/event/file_recorder.hpp"
+#include "umpire/event/recorder_factory.hpp"
 
 namespace umpire {
 
@@ -48,7 +48,7 @@ inline void* Allocator::allocate(std::size_t bytes)
     .tag(m_allocator->getName())
     .tag("testing")
     .tag("replay")
-    .record(umpire::event::file_recorder{});
+    .record(umpire::event::recorder_factory::get_recorder());
 
   return ret;
 }

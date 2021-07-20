@@ -7,10 +7,12 @@
 
 set (umpire_event_headers
   event.hpp
-  file_recorder.hpp)
+  file_recorder.hpp
+  recorder_factory.hpp)
 
 set (umpire_event_sources
-  file_recorder.cpp)
+  file_recorder.cpp
+  recorder_factory.cpp)
 
 set (umpire_event_depends umpire_tpl_json)
 
