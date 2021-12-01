@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Prepare for Environment Install
-        run:
+        run: |
            git submodule init
            git submodule update
       - name: Build Environment
