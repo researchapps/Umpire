@@ -1,9 +1,8 @@
 name: Spack Build Cache
 
 on:
-  pull_request: []
-#  schedule:
-#    - cron: "0 * * * *"
+  schedule:
+    - cron: "0 * * * *"
 
 jobs:
   install-spack:
@@ -13,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Install Spack
-        uses: vsoch/spack-package-action/install@add/spack-yaml-support
+        uses: vsoch/spack-package-action/install@main
 
   build-env-binaries:
     runs-on: ubuntu-latest
@@ -31,15 +30,15 @@ jobs:
            git submodule init
            git submodule update
       - name: Build Environment
-        uses: vsoch/spack-package-action/envpackage@add/spack-yaml-support
+        uses: vsoch/spack-package-action/envpackage@main
         with:
           spack_yaml: .spack_env/ci/spack.yaml
           token: ${{ secrets.GITHUB_TOKEN }}
           deploy: ${{ github.event_name != 'pull_request' }}
 
       - name: Update Build Cache
-        uses: vsoch/spack-package-action/buildcache@add/spack-yaml-support
+        uses: vsoch/spack-package-action/buildcache@main
         with:
           token: ${{ secrets.DEPLOY_TOKEN }}
           user: ${{ secrets.DEPLOY_USER }}
-          deploy: ${{ github.event_name != 'pull_request' }}
+          deploy: false
